@@ -6,11 +6,12 @@ futuras respuestas y entender patrones de uso.
 """
 
 import json
+import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_DB = Path(__file__).parent.parent / "data" / "user_profiles.db"
+DEFAULT_DB = Path(os.getenv("PROFILES_DB_PATH", Path(__file__).parent.parent / "data" / "user_profiles.db"))
 
 
 class UserProfileStore:

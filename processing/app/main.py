@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from pathlib import Path
 
@@ -6,7 +7,7 @@ from chunker import Chunker
 from chunk_store import ChunkStore
 
 # raw.db producido por el scraper
-RAW_DB = Path(__file__).parent.parent.parent / "scraper" / "data" / "raw.db"
+RAW_DB = Path(os.getenv("RAW_DB_PATH", Path(__file__).parent.parent.parent / "scraper" / "data" / "raw.db"))
 
 
 def load_pages(db_path: Path) -> list[dict]:

@@ -1,8 +1,9 @@
+import os
 import chromadb
 from pathlib import Path
 from datetime import datetime, timezone
 
-DEFAULT_PERSIST = Path(__file__).parent.parent / "data" / "chroma"
+DEFAULT_PERSIST = Path(os.getenv("CHROMA_PATH", Path(__file__).parent.parent / "data" / "chroma"))
 COLLECTION_NAME = "bancolombia_knowledge"
 
 

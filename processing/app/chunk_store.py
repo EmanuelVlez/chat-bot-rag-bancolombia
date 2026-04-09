@@ -1,8 +1,9 @@
+import os
 import sqlite3
 from pathlib import Path
 from datetime import datetime
 
-DEFAULT_DB = Path(__file__).parent.parent / "data" / "chunks.db"
+DEFAULT_DB = Path(os.getenv("CHUNKS_DB_PATH", Path(__file__).parent.parent / "data" / "chunks.db"))
 
 
 class ChunkStore:

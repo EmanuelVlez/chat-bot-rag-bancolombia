@@ -1,10 +1,11 @@
+import os
 import sqlite3
 from pathlib import Path
 
 from embedder import Embedder
 from vector_store import VectorStore
 
-CHUNKS_DB = Path(__file__).parent.parent.parent / "processing" / "data" / "chunks.db"
+CHUNKS_DB = Path(os.getenv("CHUNKS_DB_PATH", Path(__file__).parent.parent.parent / "processing" / "data" / "chunks.db"))
 BATCH_SIZE = 32  # chunks por lote — ajustar según RAM disponible
 
 

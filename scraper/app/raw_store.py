@@ -1,10 +1,11 @@
+import os
 import aiosqlite
 import hashlib
 from pathlib import Path
 from datetime import datetime, timezone
 
 # Siempre resuelve a scraper/data/raw.db sin importar el CWD
-DEFAULT_DB = Path(__file__).parent.parent / "data" / "raw.db"
+DEFAULT_DB = Path(os.getenv("RAW_DB_PATH", Path(__file__).parent.parent / "data" / "raw.db"))
 
 
 class RawStore:

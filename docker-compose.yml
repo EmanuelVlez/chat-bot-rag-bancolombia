@@ -1,0 +1,84 @@
+###############################################################################
+# Bancolombia RAG — Docker Compose
+#
+# PERFILES:
+#   pipeline  — ejecuta el pipeline de datos completo (scraper → processing → vector_db)
+#   app       — levanta el asistente Streamlit (frontend + agent + mcp_server)
+#
+# USO RÁPIDO (Windows PowerShell / CMD):
+#
+#   Primera vez (construir imágenes + correr pipeline + levantar app):
+#     docker compose --profile pipeline --profile app up --build
+#
+#   Solo levantar la app (cuando ya hay datos en el volumen):
+#     docker compose --profile app up
+#
+#   Solo correr el pipeline de datos:
+#     docker compose --profile pipeline run --rm vector_db
+#
+###############################################################################
+
+services:
+
+  # ── 1. SCRAPER ────────────────────────────────────────────────────────────
+  scraper:
+    build: ./scraper
+    volumes:
+      - data:/data
+    environment:
+      RAW_DB_PATH: /data/raw.db
+    profiles: [pipeline]
+
+  # ── 2. PROCESSING ─────────────────────────────────────────────────────────
+  processing:
+    build: ./processing
+    volumes:
+      - data:/data
+    environment:
+      RAW_DB_PATH:    /data/raw.db
+      CHUNKS_DB_PATH: /data/chunks.db
+    depends_on:
+      scraper:
+        condition: service_completed_successfully
+    profiles: [pipeline]
+
+  # ── 3. VECTOR DB (indexación) ─────────────────────────────────────────────
+  vector_db:
+    build: ./vector_db
+    volumes:
+      - data:/data
+    environment:
+      CHUNKS_DB_PATH: /data/chunks.db
+      CHROMA_PATH:    /data/chroma
+    depends_on:
+      processing:
+        condition: service_completed_successfully
+    profiles: [pipeline]
+
+  # ── 4. APP (frontend + agent + mcp_server) ────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    volumes:
+      - data:/data
+    environment:
+      # Rutas de datos compartidas
+      CHROMA_PATH:      /data/chroma
+      PROFILES_DB_PATH: /data/user_profiles.db
+      # Ollama corre en el host Windows — Docker Desktop expone host.docker.internal
+      OLLAMA_BASE_URL:  ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL:     ${OLLAMA_MODEL:-llama3.1:8b}
+    ports:
+      - "8501:8501"
+    # host.docker.internal en Linux requiere este extra_hosts
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles: [app]
+
+###############################################################################
+# Volumen compartido: todos los contenedores leen/escriben en el mismo /data
+###############################################################################
+volumes:
+  data:
+    driver: local

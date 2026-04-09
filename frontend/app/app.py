@@ -1,3 +1,4 @@
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -59,6 +60,11 @@ if prompt := st.chat_input("¿En qué te puedo ayudar?"):
                 )
                 response = result["response"]
                 sources = result.get("sources", [])
+                # Eliminar URLs de bancolombia.com del texto para que solo
+                # aparezcan en el expander "📎 Fuentes consultadas"
+                for url in sources:
+                    response = response.replace(url, "")
+                response = re.sub(r'\s*https://www\.bancolombia\.com\S*', '', response).strip()
             except Exception as e:
                 response = f"Lo siento, ocurrió un error al procesar tu consulta. Por favor intenta de nuevo.\n\n_Error: {e}_"
                 sources = []

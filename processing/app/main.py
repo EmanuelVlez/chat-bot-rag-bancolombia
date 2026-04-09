@@ -63,7 +63,7 @@ def main():
     stats = store.stats()
     store.close()
 
-    print(f"\nResumen:")
+    print("\nResumen:")
     print(f"  Paginas procesadas : {len(pages) - skipped}")
     print(f"  Paginas saltadas   : {skipped}")
     print(f"  Total chunks       : {stats['total_chunks']}")

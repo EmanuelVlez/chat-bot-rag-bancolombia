@@ -1,0 +1,33 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build scraper image
+        run: docker build -t bancolombia-rag/scraper ./scraper
+
+      - name: Build processing image
+        run: docker build -t bancolombia-rag/processing ./processing
+
+      - name: Build vector_db image
+        run: docker build -t bancolombia-rag/vector_db ./vector_db
+
+      - name: Build agent image
+        run: docker build -t bancolombia-rag/agent -f agent/Dockerfile .
+
+      - name: Build frontend image
+        run: docker build -t bancolombia-rag/frontend ./frontend
+
+      - name: Validate docker-compose config
+        run: docker compose config --quiet

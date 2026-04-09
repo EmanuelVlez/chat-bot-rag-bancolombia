@@ -63,7 +63,7 @@ def main():
         print(f"  [{end}/{total}] chunks indexados")
 
     stats = store.stats()
-    print(f"\nResumen ChromaDB:")
+    print("\nResumen ChromaDB:")
     print(f"  Total chunks  : {stats['total_chunks']}")
     print(f"  Total paginas : {stats['total_pages']}")
     print(f"  Categorias    : {', '.join(stats['categories'])}")

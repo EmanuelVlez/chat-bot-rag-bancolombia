@@ -20,9 +20,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "vector_db" / "app"
 _real_stdout = sys.stdout
 sys.stdout = sys.stderr
 
-from embedder import Embedder
-from vector_store import VectorStore
-from mcp.server.fastmcp import FastMCP
+from embedder import Embedder  # noqa: E402
+from vector_store import VectorStore  # noqa: E402
+from mcp.server.fastmcp import FastMCP  # noqa: E402
 
 mcp = FastMCP(
     "bancolombia-rag",

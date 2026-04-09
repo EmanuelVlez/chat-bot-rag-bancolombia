@@ -4,6 +4,9 @@ from pathlib import Path
 # Comparte embedder y vector_store del módulo vector_db sin duplicar código
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "vector_db" / "app"))
 
+import logging
+logging.basicConfig(level=logging.INFO)
+
 from embedder import Embedder
 from vector_store import VectorStore
 from mcp.server.fastmcp import FastMCP
@@ -54,8 +57,16 @@ def search_knowledge_base(
         content (fragmento de texto), url, title, category y score de relevancia (0-1).
     """
     n_results = min(max(n_results, 1), 10)
-    embedding = _embedder.embed_query(query)
-    results = _store.search(embedding, n_results=n_results, category=category)
+    try:
+        embedding = _embedder.embed_query(query)
+        results = _store.search(embedding, n_results=n_results, category=category)
+    except Exception as e:
+        logging.error(f"search_knowledge_base error: {e}")
+        return {"query": query, "total_found": 0, "results": [], "error": str(e)}
+
+    if not results:
+        return {"query": query, "total_found": 0, "results": [],
+                "message": "No se encontraron resultados para la consulta."}
 
     return {
         "query": query,
@@ -82,7 +93,11 @@ def get_article_by_url(url: str) -> dict:
         y 'chunks' (lista de fragmentos ordenados por posición).
         Si la URL no está indexada, retorna found=False.
     """
-    chunks = _store.get_by_url(url)
+    try:
+        chunks = _store.get_by_url(url)
+    except Exception as e:
+        logging.error(f"get_article_by_url error: {e}")
+        return {"url": url, "found": False, "error": str(e), "chunks": []}
 
     if not chunks:
         return {
@@ -115,7 +130,12 @@ def list_categories() -> dict:
     Returns:
         dict con 'total' y lista 'categories' con los nombres de cada categoría.
     """
-    categories = _store.list_categories()
+    try:
+        categories = _store.list_categories()
+    except Exception as e:
+        logging.error(f"list_categories error: {e}")
+        return {"total": 0, "categories": [], "error": str(e)}
+
     return {
         "total": len(categories),
         "categories": categories,

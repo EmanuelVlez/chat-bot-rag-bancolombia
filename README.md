@@ -187,7 +187,13 @@ Navegar a [http://localhost:8501](http://localhost:8501)
 
 > Requiere Python 3.11+ instalado. Descargarlo desde [https://www.python.org](https://www.python.org).
 
-**1. Instalar dependencias por módulo**
+**1. Clonar el repositorio**
+```bash
+git clone https://github.com/EmanuelVlez/chat-bot-rag-bancolombia.git
+cd chat-bot-rag-bancolombia
+```
+
+**2. Instalar dependencias por módulo**
 ```bash
 pip install -r scraper/requirements.txt
 pip install -r processing/requirements.txt
@@ -200,7 +206,7 @@ pip install -r frontend/requirements.txt
 playwright install
 ```
 
-**2. Ejecutar el pipeline de datos (una vez)**
+**3. Ejecutar el pipeline de datos (una vez)**
 ```bash
 # Terminal 1 — scraper
 cd scraper && python app/main.py
@@ -212,7 +218,7 @@ cd processing && python app/main.py
 cd vector_db && python app/main.py
 ```
 
-**3. Levantar el agente y el frontend**
+**4. Levantar el agente y el frontend**
 ```bash
 # Terminal 4 — agente (FastAPI)
 cd agent && uvicorn app.api:app --port 8000

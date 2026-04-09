@@ -1,13 +1,11 @@
+import os
 import re
-import sys
 import uuid
-from pathlib import Path
 
+import requests
 import streamlit as st
 
-# ── Path al agente ──────────────────────────────────────────────────
-sys.path.insert(0, str(Path(__file__).parent.parent.parent / "agent" / "app"))
-from agent import BancolombiaAgent
+AGENT_URL = os.getenv("AGENT_URL", "http://localhost:8000")
 
 # ── Configuración de la página ──────────────────────────────────────
 st.set_page_config(
@@ -18,13 +16,6 @@ st.set_page_config(
 
 st.title("🏦 Asistente Virtual Bancolombia")
 st.caption("Pregunta sobre productos, servicios, tarifas y más.")
-
-# ── Inicialización del agente (una sola vez por sesión del servidor) ─
-@st.cache_resource(show_spinner="Cargando base de conocimiento...")
-def get_agent() -> BancolombiaAgent:
-    return BancolombiaAgent()
-
-agent = get_agent()
 
 # ── Estado de sesión ────────────────────────────────────────────────
 if "session_id" not in st.session_state:
@@ -45,28 +36,35 @@ for msg in st.session_state.messages:
 # ── Input del usuario ───────────────────────────────────────────────
 if prompt := st.chat_input("¿En qué te puedo ayudar?"):
 
-    # Mostrar mensaje del usuario
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Obtener respuesta del agente
     with st.chat_message("assistant"):
         with st.spinner("Consultando base de conocimiento..."):
             try:
-                result = agent.chat(
-                    message=prompt,
-                    session_id=st.session_state.session_id,
+                resp = requests.post(
+                    f"{AGENT_URL}/chat",
+                    json={"message": prompt, "session_id": st.session_state.session_id},
+                    timeout=120,
                 )
-                response = result["response"]
-                sources = result.get("sources", [])
-                # Eliminar URLs de bancolombia.com del texto para que solo
-                # aparezcan en el expander "📎 Fuentes consultadas"
+                resp.raise_for_status()
+                data = resp.json()
+                response = data["response"]
+                sources = data.get("sources", [])
+
+                # Eliminar URLs y sección de fuentes del texto
                 for url in sources:
                     response = response.replace(url, "")
-                response = re.sub(r'\s*https://www\.bancolombia\.com\S*', '', response).strip()
+                response = re.sub(r'\s*https://www\.bancolombia\.com\S*', '', response)
+                response = re.sub(r'\*{0,2}Fuentes:?\*{0,2}.*', '', response, flags=re.DOTALL | re.IGNORECASE)
+                response = response.strip()
+
+            except requests.exceptions.ConnectionError:
+                response = "No se pudo conectar con el agente. Verifica que el servicio esté corriendo."
+                sources = []
             except Exception as e:
-                response = f"Lo siento, ocurrió un error al procesar tu consulta. Por favor intenta de nuevo.\n\n_Error: {e}_"
+                response = f"Lo siento, ocurrió un error al procesar tu consulta.\n\n_Error: {e}_"
                 sources = []
 
         st.markdown(response)
@@ -76,14 +74,13 @@ if prompt := st.chat_input("¿En qué te puedo ayudar?"):
                 for url in sources:
                     st.markdown(f"- [{url}]({url})")
 
-    # Guardar en historial
     st.session_state.messages.append({
         "role": "assistant",
         "content": response,
         "sources": sources,
     })
 
-# ── Sidebar con info de sesión ──────────────────────────────────────
+# ── Sidebar ─────────────────────────────────────────────────────────
 with st.sidebar:
     st.header("Sesión")
     st.caption(f"ID: `{st.session_state.session_id[:8]}...`")

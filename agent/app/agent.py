@@ -100,7 +100,8 @@ class BancolombiaAgent:
         last_msg = result["messages"][-1]
         response_text = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
 
-        sources = self._extract_sources(response_text)
+        # Fuentes directamente del estado (URLs de ChromaDB, siempre presentes)
+        sources = result.get("sources") or self._extract_sources(response_text)
         category = self._extract_category(result["messages"])
 
         return {

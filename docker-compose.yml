@@ -2,19 +2,19 @@
 # Bancolombia RAG — Docker Compose
 #
 # PERFILES:
-#   pipeline  — ejecuta el pipeline de datos completo (scraper → processing → vector_db)
-#   app       — levanta el asistente Streamlit (frontend + agent + mcp_server)
+#   pipeline  — ejecuta el pipeline de datos (scraper → processing → vector_db)
+#   app       — levanta el asistente (frontend + agent)
 #
 # USO RÁPIDO (Windows PowerShell / CMD):
 #
-#   Primera vez (construir imágenes + correr pipeline + levantar app):
+#   Primera vez (pipeline + app):
 #     docker compose --profile pipeline --profile app up --build
 #
 #   Solo levantar la app (cuando ya hay datos en el volumen):
 #     docker compose --profile app up
 #
 #   Solo correr el pipeline de datos:
-#     docker compose --profile pipeline run --rm vector_db
+#     docker compose --profile pipeline up --build
 #
 ###############################################################################
 
@@ -55,25 +55,33 @@ services:
         condition: service_completed_successfully
     profiles: [pipeline]
 
-  # ── 4. APP (frontend + agent + mcp_server) ────────────────────────────────
-  app:
+  # ── 4. AGENT (FastAPI + LangGraph + MCP server subprocess) ───────────────
+  agent:
     build:
       context: .
-      dockerfile: Dockerfile.app
+      dockerfile: agent/Dockerfile
     volumes:
       - data:/data
     environment:
-      # Rutas de datos compartidas
       CHROMA_PATH:      /data/chroma
       PROFILES_DB_PATH: /data/user_profiles.db
-      # Ollama corre en el host Windows — Docker Desktop expone host.docker.internal
       OLLAMA_BASE_URL:  ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL:     ${OLLAMA_MODEL:-llama3.1:8b}
     ports:
-      - "8501:8501"
-    # host.docker.internal en Linux requiere este extra_hosts
+      - "8000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    profiles: [app]
+
+  # ── 5. FRONTEND (Streamlit) ───────────────────────────────────────────────
+  frontend:
+    build: ./frontend
+    environment:
+      AGENT_URL: http://agent:8000
+    ports:
+      - "8501:8501"
+    depends_on:
+      - agent
     profiles: [app]
 
 ###############################################################################

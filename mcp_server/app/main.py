@@ -1,11 +1,24 @@
 import sys
+import os
+import logging
 from pathlib import Path
+
+# MCP usa stdio: stdout debe estar limpio para JSON-RPC.
+# Redirigir todos los prints/logs de librerías a stderr antes de importarlas.
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ["TQDM_DISABLE"] = "1"
+logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
+for _noisy in ("sentence_transformers", "transformers", "huggingface_hub",
+               "chromadb", "httpx", "torch"):
+    logging.getLogger(_noisy).setLevel(logging.ERROR)
 
 # Comparte embedder y vector_store del módulo vector_db sin duplicar código
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "vector_db" / "app"))
 
-import logging
-logging.basicConfig(level=logging.INFO)
+# MCP usa stdout para JSON-RPC: redirigir durante la carga del modelo
+# para que prints de sentence-transformers/chromadb no corrompan el stream.
+_real_stdout = sys.stdout
+sys.stdout = sys.stderr
 
 from embedder import Embedder
 from vector_store import VectorStore
@@ -22,8 +35,12 @@ mcp = FastMCP(
 )
 
 # Se inicializan una sola vez al arrancar el servidor
+# (stdout sigue redirigido a stderr durante la carga)
 _embedder = Embedder()
 _store = VectorStore()
+
+# Restaurar stdout para que FastMCP pueda usar stdio JSON-RPC
+sys.stdout = _real_stdout
 
 
 # ─────────────────────────────────────────────

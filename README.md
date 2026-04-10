@@ -264,26 +264,79 @@ Copiar `.env.example` a `.env` y ajustar si es necesario:
 
 ## Decisiones técnicas justificadas
 
-### LLM: Ollama + llama3.1:8b (local)
+### 1. Web Scraping — profundidad, contenido dinámico y robots.txt
+
+**Profundidad de crawling:** Se implementó un BFS (Breadth-First Search) desde `https://www.bancolombia.com/personas` con una cola asíncrona y pool de 5 workers paralelos. No se impuso límite de profundidad fijo; en cambio, se restringió el dominio (`bancolombia.com`) y la sección (`/personas`), lo que resultó en **62 páginas únicas indexadas**, superando el mínimo de 50 requerido. Se implementó deduplicación por SHA-256 del contenido para evitar indexar páginas con contenido idéntico (banners promocionales, páginas de error, etc.).
+
+**Contenido dinámico (JavaScript rendering):** El sitio de Bancolombia es una SPA (Single Page Application) en React. `requests` + `BeautifulSoup` solo obtienen el HTML estático inicial sin contenido. Se usó **Playwright** (Chromium headless) con espera activa a que el elemento `<main>` esté presente en el DOM antes de extraer el texto, garantizando que el contenido renderizado por JavaScript esté disponible. Para páginas que no tienen `<main>`, se usa un fallback al `<body>` completo.
+
+**Robots.txt:** Se implementó `RobotsChecker` que descarga y parsea `https://www.bancolombia.com/robots.txt` antes de iniciar el crawl. Cada URL se valida contra las reglas del archivo antes de ser encolada. URLs bloqueadas por `robots.txt` se descartan silenciosamente. Adicionalmente se agrega un delay de cortesía entre requests para no sobrecargar los servidores del banco.
+
+---
+
+### 2. Chunking — tamaño, overlap y método de segmentación
+
+**Método:** Se usa `RecursiveCharacterTextSplitter` de LangChain con tokenización via `tiktoken` (encoding `cl100k_base`). Este splitter intenta dividir por separadores semánticos en orden de prioridad: `\n\n` → `\n` → `. ` → ` ` → `""`, lo que preserva párrafos y oraciones completas antes de recurrir a cortes arbitrarios.
+
+**Tamaño del chunk: 512 tokens**
+Justificación: Los modelos de embedding (`multilingual-e5-small`) tienen un límite de 512 tokens. Chunks más grandes se truncarían perdiendo información. Chunks más pequeños (ej. 128) pierden contexto semántico necesario para responder preguntas sobre productos financieros que suelen requerir varios párrafos.
+
+**Overlap: 64 tokens (~12.5%)**
+Justificación: Evita que una pregunta cuya respuesta está en el límite entre dos chunks quede sin cobertura. Con 64 tokens de solapamiento, cada chunk comparte contexto con el anterior y el siguiente, mejorando la recuperación semántica sin duplicar excesivamente los datos.
+
+---
+
+### 3. Embeddings, dimensionalidad y base vectorial
+
+**Modelo de embeddings: `intfloat/multilingual-e5-small`**
+Se evaluaron tres alternativas:
+
+| Modelo | Dims | Idiomas | Costo | Decisión |
+|---|---|---|---|---|
+| `text-embedding-3-small` (OpenAI) | 1536 | Multi | API de pago | Descartado |
+| `multilingual-e5-large` | 1024 | Multi | Gratis, local | Muy pesado para CPU |
+| `multilingual-e5-small` | 384 | Multi | Gratis, local | **Elegido** |
+
+`multilingual-e5-small` fue elegido por: soporte nativo para español, ejecución local sin costos, tamaño reducido (117MB) compatible con entornos sin GPU, y buen desempeño en benchmarks de recuperación semántica en dominios financieros. Requiere los prefijos `passage:` al indexar y `query:` al buscar, según la especificación del modelo.
+
+**Dimensionalidad: 384**
+Suficiente para capturar semántica en el dominio acotado de productos financieros de Bancolombia. Dimensiones mayores no aportarían mejora significativa dado el vocabulario específico del dominio.
+
+**Base vectorial: ChromaDB persistente**
+Elegida sobre Pinecone, Weaviate o pgvector por:
+- Embebida (sin servidor separado), simplifica el despliegue Docker
+- Persistencia en disco con un directorio, fácil de compartir como volumen
+- Similitud coseno nativa, ideal para embeddings normalizados
+- Upsert idempotente: el pipeline puede re-ejecutarse sin duplicar datos
+- Open-source y gratuita
+
+**Estrategia de indexación:** Cada chunk se indexa con metadatos (`url`, `title`, `category`, `chunk_index`) que permiten filtrar por categoría en la búsqueda y reconstruir el artículo completo ordenado por `chunk_index`.
+
+---
+
+### 4. Construcción del prompt e invocación del LLM — agente vs servidor MCP
+
+**Decisión: el LLM se invoca en el agente, no en el servidor MCP.**
+
+El servidor MCP actúa como capa de recuperación pura (retrieval): recibe una consulta, busca en ChromaDB y devuelve los chunks relevantes con metadatos. No construye prompts ni invoca el LLM.
+
+**Justificación:**
+
+- **Separación de responsabilidades:** El servidor MCP es una capacidad reutilizable e independiente del modelo de lenguaje. Cualquier cliente (otro agente, otra aplicación) puede consumir `search_knowledge_base` sin acoplar el LLM al servidor.
+- **Flexibilidad:** Cambiar el modelo LLM (de `llama3.1:8b` a otro) solo requiere modificar el agente, sin tocar el servidor MCP.
+- **Protocolo MCP:** MCP está diseñado para exponer capacidades (tools, resources), no para ser un endpoint de chat. Poner el LLM en el servidor rompería esta separación arquitectónica.
+- **Control del contexto:** El agente maneja los tres tipos de memoria (corto, mediano, largo plazo) y construye el system prompt con ese contexto enriquecido antes de invocar el LLM. Centralizar esto en el agente es más coherente.
+
+---
+
+### 5. LLM: Ollama + llama3.1:8b (local)
 Se eligió sobre APIs de pago (Claude, GPT-4) para garantizar que cualquier evaluador pueda ejecutar el sistema sin costos ni API keys. `llama3.1:8b` ofrece buen balance entre calidad de respuesta en español y recursos necesarios (8 GB RAM).
 
-### Embeddings: intfloat/multilingual-e5-small (local)
-Modelo open-source de 384 dimensiones que soporta español de forma nativa. Requiere prefijo `passage:` al indexar y `query:` al buscar. No tiene costos de API y es suficientemente preciso para el dominio financiero en español.
-
-### Base vectorial: ChromaDB persistente
-Elegida sobre Pinecone o Weaviate por ser embebida (sin servidor separado), open-source y con soporte nativo para similitud coseno. Los datos persisten en disco con un simple directorio, facilitando el volumen compartido en Docker.
-
-### Protocolo MCP + FastMCP
-El servidor MCP expone la base de conocimiento como capacidades reutilizables (`search_knowledge_base`, `get_article_by_url`, `list_categories`) que cualquier cliente MCP-compatible puede consumir sin conocer los detalles de ChromaDB.
-
-### Framework del agente: LangGraph
+### 6. Framework del agente: LangGraph
 Permite modelar el flujo del agente como un grafo de estados con memoria persistente por sesión (`MemorySaver`). Soporta herramientas async (MCP), resumen automático del historial y nodos personalizados para los tres tipos de memoria.
 
-### Transporte MCP: stdio
+### 7. Transporte MCP: stdio
 El agente lanza el servidor MCP como subproceso y se comunica por stdin/stdout. Esto los mantiene en el mismo contenedor Docker evitando latencia de red, y es el transporte obligatorio según la especificación del protocolo.
-
-### Búsqueda forzada en el agente
-`llama3.1:8b` en ocasiones responde sin invocar las tools MCP. Para garantizar que **siempre** se use la base de conocimiento oficial, el nodo agente realiza una búsqueda directa en ChromaDB antes de invocar el LLM, inyectando los resultados como contexto. Las fuentes se extraen directamente de ChromaDB (no del texto del LLM).
 
 ---
 

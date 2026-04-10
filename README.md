@@ -266,7 +266,18 @@ Copiar `.env.example` a `.env` y ajustar si es necesario:
 
 ### 1. Web Scraping — profundidad, contenido dinámico y robots.txt
 
-**Profundidad de crawling:** Se implementó un BFS (Breadth-First Search) desde `https://www.bancolombia.com/personas` con una cola asíncrona y pool de 5 workers paralelos. No se impuso límite de profundidad fijo; en cambio, se restringió el dominio (`bancolombia.com`) y la sección (`/personas`), lo que resultó en **62 páginas únicas indexadas**, superando el mínimo de 50 requerido. Se implementó deduplicación por SHA-256 del contenido para evitar indexar páginas con contenido idéntico (banners promocionales, páginas de error, etc.).
+**Profundidad de crawling:** Se implementó un crawl desde `https://www.bancolombia.com/personas` con una cola FIFO asíncrona (`asyncio.Queue`) y pool de 5 workers paralelos. No se impuso límite de profundidad fijo; en cambio, se restringió el dominio (`bancolombia.com`) y la sección (`/personas`), lo que resultó en **62 páginas únicas indexadas**, superando el mínimo de 50 requerido. Se implementó deduplicación por SHA-256 del contenido para evitar indexar páginas con contenido idéntico (banners promocionales, páginas de error, etc.).
+
+**Estrategia de recorrido — FIFO vs Priority Queue por profundidad:**
+
+Se consideró usar una `PriorityQueue` donde la prioridad fuera la profundidad del URL (menor profundidad = mayor prioridad), lo que garantizaría procesar todos los URLs de nivel 1 antes que los de nivel 2, y así sucesivamente. Sin embargo, se descartó por las siguientes razones:
+
+- **Con cola FIFO y 5 workers paralelos, el comportamiento ya es aproximadamente BFS.** Los links de `/personas` (depth=1) se encolan antes que sus hijos, y con workers concurrentes el orden de extracción es similar al BFS estricto.
+- **El sitio de Bancolombia no tiene una jerarquía de importancia clara por profundidad.** Páginas de productos importantes como `/personas/creditos/vivienda` (depth=3) son tan relevantes como `/personas/cuentas` (depth=2). Priorizar por profundidad no mejora la calidad del corpus.
+- **Ya se alcanzaron 62 páginas únicas**, superando el mínimo de 50 sin necesidad de controlar el orden estrictamente.
+- **Agrega complejidad innecesaria:** La `PriorityQueue` requiere pasar la profundidad como parámetro a cada worker y recalcularla para cada link descubierto, sin un beneficio demostrable sobre los resultados obtenidos.
+
+La cola FIFO es más simple, igualmente efectiva para este dominio acotado y ya produjo los resultados esperados.
 
 **Contenido dinámico (JavaScript rendering):** El sitio de Bancolombia es una SPA (Single Page Application) en React. `requests` + `BeautifulSoup` solo obtienen el HTML estático inicial sin contenido. Se usó **Playwright** (Chromium headless) con espera activa a que el elemento `<main>` esté presente en el DOM antes de extraer el texto, garantizando que el contenido renderizado por JavaScript esté disponible. Para páginas que no tienen `<main>`, se usa un fallback al `<body>` completo.
 
@@ -276,13 +287,25 @@ Copiar `.env.example` a `.env` y ajustar si es necesario:
 
 ### 2. Chunking — tamaño, overlap y método de segmentación
 
-**Método:** Se usa `RecursiveCharacterTextSplitter` de LangChain con tokenización via `tiktoken` (encoding `cl100k_base`). Este splitter intenta dividir por separadores semánticos en orden de prioridad: `\n\n` → `\n` → `. ` → ` ` → `""`, lo que preserva párrafos y oraciones completas antes de recurrir a cortes arbitrarios.
+**Método de segmentación:**
+
+Se consideraron tres enfoques:
+
+| Estrategia | Descripción | Descartado porque |
+|---|---|---|
+| Chunks por caracteres fijos | Dividir cada N caracteres | Rompe oraciones y párrafos arbitrariamente, pierde cohesión semántica |
+| Chunks por oraciones (NLTK/spaCy) | Dividir en cada punto final | Oraciones muy cortas en textos financieros generan chunks demasiado pequeños y poco informativos |
+| **RecursiveCharacterTextSplitter** ✅ | Dividir por separadores semánticos en cascada | **Elegido** |
+
+Se eligió `RecursiveCharacterTextSplitter` de LangChain con tokenización via `tiktoken` (`cl100k_base`). Intenta dividir respetando la estructura del texto en orden de prioridad: `\n\n` → `\n` → `. ` → ` ` → `""`, preservando párrafos y oraciones completas antes de recurrir a cortes arbitrarios. Es el método más robusto para textos web con estructura variable como los del sitio de Bancolombia.
 
 **Tamaño del chunk: 512 tokens**
-Justificación: Los modelos de embedding (`multilingual-e5-small`) tienen un límite de 512 tokens. Chunks más grandes se truncarían perdiendo información. Chunks más pequeños (ej. 128) pierden contexto semántico necesario para responder preguntas sobre productos financieros que suelen requerir varios párrafos.
+
+Se evaluaron tamaños de 128, 256 y 512 tokens. Se eligieron 512 porque es el límite máximo del modelo de embeddings `multilingual-e5-small` — chunks más grandes se truncarían perdiendo información al final. Chunks de 128 o 256 tokens capturan menos contexto y en textos financieros (donde un producto se describe en varios párrafos continuos) generan fragmentos que por sí solos no responden preguntas completas.
 
 **Overlap: 64 tokens (~12.5%)**
-Justificación: Evita que una pregunta cuya respuesta está en el límite entre dos chunks quede sin cobertura. Con 64 tokens de solapamiento, cada chunk comparte contexto con el anterior y el siguiente, mejorando la recuperación semántica sin duplicar excesivamente los datos.
+
+Se consideró no usar overlap (overlap=0) para evitar redundancia. Sin embargo, sin overlap una pregunta cuya respuesta está justo en la frontera entre dos chunks puede no ser recuperada por ninguno de ellos. Con 64 tokens de solapamiento cada chunk comparte contexto con el anterior y el siguiente, mejorando la cobertura semántica sin duplicar excesivamente los datos. Un overlap mayor (ej. 128 tokens = 25%) aumentaría el número de chunks y el tiempo de indexación sin mejora proporcional.
 
 ---
 
@@ -302,15 +325,20 @@ Se evaluaron tres alternativas:
 **Dimensionalidad: 384**
 Suficiente para capturar semántica en el dominio acotado de productos financieros de Bancolombia. Dimensiones mayores no aportarían mejora significativa dado el vocabulario específico del dominio.
 
-**Base vectorial: ChromaDB persistente**
-Elegida sobre Pinecone, Weaviate o pgvector por:
-- Embebida (sin servidor separado), simplifica el despliegue Docker
-- Persistencia en disco con un directorio, fácil de compartir como volumen
-- Similitud coseno nativa, ideal para embeddings normalizados
-- Upsert idempotente: el pipeline puede re-ejecutarse sin duplicar datos
-- Open-source y gratuita
+**Base vectorial:**
 
-**Estrategia de indexación:** Cada chunk se indexa con metadatos (`url`, `title`, `category`, `chunk_index`) que permiten filtrar por categoría en la búsqueda y reconstruir el artículo completo ordenado por `chunk_index`.
+Se evaluaron cuatro opciones:
+
+| Base vectorial | Tipo | Costo | Descartado porque |
+|---|---|---|---|
+| Pinecone | Cloud managed | API de pago | Requiere cuenta y API key, no reproducible sin costo |
+| Weaviate | Self-hosted / Cloud | Gratis local | Mayor complejidad de despliegue, requiere servidor separado |
+| pgvector (PostgreSQL) | Extensión SQL | Gratis | Agrega dependencia de PostgreSQL, innecesario para este volumen de datos |
+| **ChromaDB** ✅ | Embebida local | Gratis | **Elegida** |
+
+ChromaDB fue elegida por ser embebida (sin servidor separado), lo que simplifica el despliegue Docker al compartirse como volumen entre contenedores. Soporta similitud coseno nativa (ideal para embeddings normalizados), upsert idempotente (el pipeline puede re-ejecutarse sin duplicar datos) y es completamente open-source. Para el volumen de datos de este proyecto (~250 chunks) es más que suficiente.
+
+**Estrategia de indexación:** Cada chunk se indexa con metadatos (`url`, `title`, `category`, `chunk_index`) que permiten filtrar por categoría en la búsqueda y reconstruir el artículo completo ordenado por `chunk_index`. Se consideró indexar el artículo completo como un solo documento, pero esto excedería el límite de tokens del modelo de embeddings y perdería precisión en la recuperación.
 
 ---
 

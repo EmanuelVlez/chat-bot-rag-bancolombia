@@ -9,7 +9,7 @@ from robots_checker import RobotsChecker
 from raw_store import RawStore
 
 START_URL = "https://www.bancolombia.com/personas"
-MAX_PAGES = 60
+MAX_PAGES = 100
 CONCURRENCY = 5
 
 

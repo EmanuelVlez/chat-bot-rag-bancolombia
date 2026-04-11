@@ -221,7 +221,8 @@ cd vector_db && python app/main.py
 **4. Levantar el agente y el frontend**
 ```bash
 # Terminal 4 — agente (FastAPI)
-cd agent && uvicorn app.api:app --port 8000
+# Ejecutar en Command Prompt desde la raíz del proyecto
+cd agent && uvicorn api:app --port 8000 --app-dir app
 
 # Terminal 5 — frontend
 # --server.fileWatcherType none evita warnings de torchvision en Windows

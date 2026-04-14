@@ -168,7 +168,7 @@
     </mxGraphModel>
   </diagram>
   <diagram id="nw9vPpt6Cajz5Wo4LzMe" name="Página-2">
-    <mxGraphModel dx="1435" dy="1177" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" background="light-dark(#000000,#1C1C1E)" math="0" shadow="0">
+    <mxGraphModel dx="1888" dy="1218" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="0" pageScale="1" pageWidth="827" pageHeight="1169" background="light-dark(#000000,#1C1C1E)" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
@@ -294,21 +294,10 @@
             </Array>
           </mxGeometry>
         </mxCell>
-        <mxCell id="C_ag_cr" edge="1" parent="1" source="N_agent" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#4CAF50;fontColor=#81C784;fontSize=9;fontStyle=0;labelBackgroundColor=none;labelBorderColor=none;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.7;entryY=0;entryDx=0;entryDy=0;" target="D_chroma" value="ChromaDB directo">
-          <mxGeometry relative="1" as="geometry">
-            <mxPoint as="offset" />
-            <Array as="points">
-              <mxPoint x="870" y="480" />
-              <mxPoint x="870" y="515" />
-              <mxPoint x="860" y="515" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
         <mxCell id="C_ag_pr" edge="1" parent="1" source="N_agent" style="edgeStyle=orthogonalEdgeStyle;html=1;strokeColor=#FF7043;fontColor=#FFAB91;fontSize=9;fontStyle=0;labelBackgroundColor=none;labelBorderColor=none;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" target="D_profiles" value="lee/escribe">
           <mxGeometry relative="1" as="geometry">
             <Array as="points">
-              <mxPoint x="1030" y="190" />
-              <mxPoint x="1262" y="190" />
+              <mxPoint x="1262" y="230" />
               <mxPoint x="1262" y="570" />
             </Array>
           </mxGeometry>

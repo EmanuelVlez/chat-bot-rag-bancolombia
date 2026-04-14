@@ -6,52 +6,21 @@ Chatbot conversacional para la sección **Personas** del sitio web de Bancolombi
 
 ## Diagrama de arquitectura
 
-```mermaid
-flowchart TD
-    subgraph PIPELINE["Pipeline de datos (one-shot)"]
-        S["🕷️ Scraper\nPlaywright + BeautifulSoup\nraw.db (SQLite)"]
-        P["⚙️ Processing\nTextCleaner + Chunker\nchunks.db (SQLite)"]
-        V["🗄️ Vector DB\nmultilingual-e5-small\nChromaDB (cosine)"]
-        S -->|raw.db| P
-        P -->|chunks.db| V
-    end
+![Arquitectura del sistema](arquitectura.png)
 
-    subgraph APP["Aplicación (always-on)"]
-        F["🖥️ Frontend\nStreamlit :8501"]
-        AG["🤖 Agent\nLangGraph + FastAPI :8000"]
-        MCP["🔌 MCP Server\nFastMCP stdio"]
-        OL["🦙 Ollama\nllama3.1:8b\n:11434 (host)"]
+---
 
-        F -->|HTTP POST /chat| AG
-        AG -->|stdio JSON-RPC| MCP
-        AG -->|ChromaDB directo| V
-        AG <-->|LLM calls| OL
-    end
+## Cómo funciona
 
-    subgraph MEMORIA["Memoria del agente"]
-        M1["💬 Corto plazo\nLangGraph MemorySaver"]
-        M2["📋 Mediano plazo\nResumen automático"]
-        M3["👤 Largo plazo\nSQLite user_profiles.db"]
-    end
+El sistema tiene dos fases bien diferenciadas:
 
-    subgraph DATOS["/data (volumen compartido Docker)"]
-        DB1[("raw.db")]
-        DB2[("chunks.db")]
-        DB3[("chroma/")]
-        DB4[("user_profiles.db")]
-    end
+**Pipeline de datos (se ejecuta una sola vez):**
+El scraper recorre el sitio `bancolombia.com/personas` con Playwright, extrae el contenido renderizado en JavaScript y lo guarda en `raw.db`. El módulo de processing limpia el texto y lo divide en chunks de 512 tokens con overlap, almacenándolos en `chunks.db`. Finalmente, el módulo `vector_db` genera embeddings con `multilingual-e5-small` e indexa los chunks en ChromaDB.
 
-    V -->|escribe| DB3
-    P -->|escribe| DB2
-    S -->|escribe| DB1
-    AG -->|lee/escribe| DB4
-    MCP -->|lee| DB3
-    AG -->|lee| DB3
+**Aplicación (siempre activa):**
+El usuario escribe una pregunta en el frontend Streamlit, que la envía al agente via HTTP. El agente (LangGraph + FastAPI) invoca el LLM local (Ollama/llama3.1:8b), que decide llamar la tool `search_knowledge_base` del MCP server. El MCP server embebe la consulta, busca en ChromaDB y devuelve los fragmentos más relevantes. El LLM sintetiza la respuesta con esos fragmentos y cita las fuentes originales.
 
-    AG --- M1
-    AG --- M2
-    AG --- M3
-```
+El agente mantiene tres capas de memoria: historial de mensajes por sesión (corto plazo), resumen automático cada 12 mensajes (mediano plazo) y perfil de usuario en SQLite que registra los temas consultados (largo plazo).
 
 ---
 
@@ -132,17 +101,6 @@ Debe aparecer `llama3.1:8b` en la lista.
 
 > **Nota:** Si ves el error `listen tcp 127.0.0.1:11434: bind: address already in use`,
 > significa que Ollama ya está corriendo como servicio en segundo plano — es correcto, no hay que hacer nada.
-
----
-
-### 3. Requisitos de hardware recomendados
-
-| Recurso | Mínimo | Recomendado |
-|---|---|---|
-| RAM | 8 GB | 16 GB |
-| Disco libre | 15 GB | 20 GB |
-| GPU | No requerida | NVIDIA (acelera el LLM) |
-| OS | Windows 10/11 64-bit | Windows 11 |
 
 ---
 
@@ -375,7 +333,7 @@ El agente lanza el servidor MCP como subproceso y se comunica por stdin/stdout. 
 |---|---|
 | Cobertura del scraper | Solo indexa páginas de `bancolombia.com/personas`. Secciones dinámicas protegidas con login no son accesibles. |
 | Calidad del LLM | `llama3.1:8b` puede alucinar en preguntas fuera de su contexto de entrenamiento. El sistema mitiga esto forzando la búsqueda en ChromaDB. |
-| Latencia | Sin GPU, `llama3.1:8b` tarda 15-45 segundos por respuesta en CPU. Con GPU NVIDIA el tiempo baja a 2-5 segundos. |
+| Latencia | Sin GPU, `llama3.1:8b` tarda varios segundos por respuesta en CPU.
 | Memoria mediano plazo | El resumen automático se activa cada 12 mensajes. Con LLMs pequeños, la calidad del resumen puede ser inconsistente. |
 | Idioma | El sistema está optimizado para español. Preguntas en inglés funcionan pero con menor precisión en la recuperación. |
 | Ollama en Docker | En Windows con Docker Desktop, Ollama debe correr en el host. La conexión se realiza vía `host.docker.internal:11434`. |

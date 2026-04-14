@@ -18,7 +18,7 @@ class Embedder:
     def __init__(self):
         print(f"Cargando modelo {MODEL_NAME}...")
         self.model = SentenceTransformer(MODEL_NAME)
-        self.dimensions = self.model.get_embedding_dimension()
+        self.dimensions = self.model.get_sentence_embedding_dimension()
         print(f"Modelo listo. Dimensiones: {self.dimensions}")
 
     def embed_passages(self, texts: list[str]) -> list[list[float]]:

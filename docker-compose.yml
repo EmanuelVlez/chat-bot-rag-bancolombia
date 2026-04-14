@@ -24,7 +24,7 @@ services:
   scraper:
     build: ./scraper
     volumes:
-      - data:/data
+      - ./data:/data
     environment:
       RAW_DB_PATH: /data/raw.db
     profiles: [pipeline]
@@ -33,7 +33,7 @@ services:
   processing:
     build: ./processing
     volumes:
-      - data:/data
+      - ./data:/data
     environment:
       RAW_DB_PATH:    /data/raw.db
       CHUNKS_DB_PATH: /data/chunks.db
@@ -46,7 +46,7 @@ services:
   vector_db:
     build: ./vector_db
     volumes:
-      - data:/data
+      - ./data:/data
     environment:
       CHUNKS_DB_PATH: /data/chunks.db
       CHROMA_PATH:    /data/chroma
@@ -61,7 +61,7 @@ services:
       context: .
       dockerfile: agent/Dockerfile
     volumes:
-      - data:/data
+      - ./data:/data
     environment:
       CHROMA_PATH:      /data/chroma
       PROFILES_DB_PATH: /data/user_profiles.db
@@ -87,10 +87,3 @@ services:
     depends_on:
       - agent
     profiles: [app]
-
-###############################################################################
-# Volumen compartido: todos los contenedores leen/escriben en el mismo /data
-###############################################################################
-volumes:
-  data:
-    driver: local

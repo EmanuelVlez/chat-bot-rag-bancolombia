@@ -12,6 +12,7 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_mcp_adapters.tools import load_mcp_tools
 
 from graph import build_graph
 from memory import UserProfileStore
@@ -53,8 +54,11 @@ class BancolombiaAgent:
                 }
             }
         )
-        # v0.1.0+: ya no se usa como context manager
-        tools = await self._mcp_client.get_tools()
+        # client.session() mantiene el subproceso stdio vivo durante toda
+        # la vida del agente, evitando re-spawn en cada request.
+        self._session_ctx = self._mcp_client.session("bancolombia")
+        self._session = await self._session_ctx.__aenter__()
+        tools = await load_mcp_tools(self._session)
         self._graph = build_graph(tools)
         print(f"Agente listo con {len(tools)} tools MCP.")
 
@@ -100,8 +104,8 @@ class BancolombiaAgent:
         last_msg = result["messages"][-1]
         response_text = last_msg.content if isinstance(last_msg.content, str) else str(last_msg.content)
 
-        # Fuentes directamente del estado (URLs de ChromaDB, siempre presentes)
-        sources = result.get("sources") or self._extract_sources(response_text)
+        # Fuentes provenientes de los tool results del MCP server
+        sources = result.get("sources") or []
         category = self._extract_category(result["messages"])
 
         return {
@@ -109,12 +113,6 @@ class BancolombiaAgent:
             "sources": sources,
             "category": category,
         }
-
-    @staticmethod
-    def _extract_sources(text: str) -> list[str]:
-        """Extrae URLs de bancolombia.com mencionadas en la respuesta."""
-        pattern = r"https://www\.bancolombia\.com[^\s\)\]\,\"\']*"
-        return list(dict.fromkeys(re.findall(pattern, text)))
 
     @staticmethod
     def _extract_category(messages: list) -> str | None:
@@ -129,4 +127,8 @@ class BancolombiaAgent:
 
     def close(self):
         """Limpia recursos al cerrar la aplicación."""
+        asyncio.run_coroutine_threadsafe(
+            self._session_ctx.__aexit__(None, None, None),
+            self._loop,
+        ).result(timeout=10)
         self._loop.call_soon_threadsafe(self._loop.stop)

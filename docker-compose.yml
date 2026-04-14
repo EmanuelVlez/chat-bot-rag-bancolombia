@@ -71,6 +71,10 @@ services:
       - "8000:8000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    depends_on:
+      vector_db:
+        condition: service_completed_successfully
+        required: false
     profiles: [app]
 
   # ── 5. FRONTEND (Streamlit) ───────────────────────────────────────────────

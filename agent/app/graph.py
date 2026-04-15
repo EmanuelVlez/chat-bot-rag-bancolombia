@@ -76,20 +76,29 @@ def build_graph(tools: list):
         msgs = state["messages"]
         older = msgs[:-4]  # conserva solo los últimos 4 mensajes
 
+        # Solo resumir mensajes humanos y del asistente — los ToolMessages
+        # contienen JSON crudo de ChromaDB que confunde al LLM pequeño
+        readable = [
+            m for m in older
+            if getattr(m, "type", "") in ("human", "ai")
+            and not getattr(m, "tool_calls", None)  # excluir ai messages que son llamadas a tool
+        ]
+
         existing = state.get("summary", "")
         if existing:
             prompt = (
-                f"Resumen previo:\n{existing}\n\n"
-                f"Amplía el resumen con esta nueva parte de la conversación "
-                f"(máximo 4 oraciones):\n"
+                f"Resumen previo de la conversación con Bancolombia:\n{existing}\n\n"
+                f"Amplía el resumen incluyendo los nuevos temas preguntados "
+                f"(máximo 4 oraciones, solo temas y productos consultados):\n"
             )
         else:
             prompt = (
-                "Resume esta conversación sobre Bancolombia en máximo 4 oraciones, "
-                "conservando los puntos clave que el usuario mencionó:\n"
+                "Resume en máximo 4 oraciones los temas y productos de Bancolombia "
+                "que el usuario preguntó en esta conversación. "
+                "Solo menciona los temas consultados, no incluyas las respuestas:\n"
             )
 
-        for m in older:
+        for m in readable:
             prompt += f"\n{m.type}: {str(m.content)[:300]}"
 
         new_summary = llm.invoke(prompt).content

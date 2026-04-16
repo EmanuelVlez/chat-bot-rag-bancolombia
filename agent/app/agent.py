@@ -125,6 +125,27 @@ class BancolombiaAgent:
                     return match.group(1)
         return None
 
+    def get_stats(self) -> str:
+        """
+        Lee el resource knowledge-base://stats del MCP server.
+
+        Returns:
+            str con las estadísticas de la base de conocimiento.
+        """
+        future = asyncio.run_coroutine_threadsafe(
+            self._async_get_stats(), self._loop
+        )
+        return future.result(timeout=30)
+
+    async def _async_get_stats(self) -> str:
+        result = await self._session.read_resource("knowledge-base://stats")
+        # result.contents es una lista de TextResourceContents o similares
+        parts = []
+        for content in result.contents:
+            text = getattr(content, "text", None) or str(content)
+            parts.append(text)
+        return "\n".join(parts)
+
     def close(self):
         """Limpia recursos al cerrar la aplicación."""
         asyncio.run_coroutine_threadsafe(

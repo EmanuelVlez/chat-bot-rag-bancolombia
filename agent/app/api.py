@@ -30,6 +30,15 @@ def health():
     return {"status": "ok"}
 
 
+@app.get("/stats")
+def stats():
+    """Estadísticas de la base de conocimiento (lee el resource knowledge-base://stats del MCP server)."""
+    try:
+        return {"stats": _agent.get_stats()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     if not req.message.strip():

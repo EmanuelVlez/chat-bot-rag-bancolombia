@@ -163,7 +163,7 @@ def list_categories() -> dict:
 # RESOURCES
 # ─────────────────────────────────────────────
 
-@mcp.resource("knowledgebase://stats")
+@mcp.resource("knowledge-base://stats")
 def get_stats() -> str:
     """
     Estadísticas de la base de conocimiento: chunks indexados, páginas procesadas,

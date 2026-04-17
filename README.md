@@ -70,7 +70,7 @@ Reinicia Windows cuando lo solicite.
 docker --version
 docker compose version
 ```
-Ambos deben responder con versión. El ícono de la ballena en la barra de tareas debe estar verde.
+Ambos deben responder con versión.
 
 ---
 
@@ -225,7 +225,7 @@ Copiar `.env.example` a `.env` y ajustar si es necesario:
 
 ### 1. Web Scraping — profundidad, contenido dinámico y robots.txt
 
-**Profundidad de crawling:** Se implementó un crawl desde `https://www.bancolombia.com/personas` con una cola FIFO asíncrona (`asyncio.Queue`) y pool de 5 workers paralelos. No se impuso límite de profundidad fijo; en cambio, se restringió el dominio (`bancolombia.com`) y la sección (`/personas`), lo que resultó en **62 páginas únicas indexadas**, superando el mínimo de 50 requerido. Se implementó deduplicación por SHA-256 del contenido para evitar indexar páginas con contenido idéntico (banners promocionales, páginas de error, etc.).
+**Profundidad de crawling:** Se implementó un crawl desde `https://www.bancolombia.com/personas` con una cola FIFO asíncrona (`asyncio.Queue`) y pool de 5 workers paralelos. No se impuso límite de profundidad fijo; en cambio, se restringió el dominio (`bancolombia.com`) y la sección (`/personas`), lo que resultó en **100 páginas únicas indexadas aproximadamente**, superando el mínimo de 50 requerido. Se implementó deduplicación por SHA-256 del contenido para evitar indexar páginas con contenido idéntico (banners promocionales, páginas de error, etc.).
 
 **Estrategia de recorrido — FIFO vs Priority Queue por profundidad:**
 
@@ -233,7 +233,7 @@ Se consideró usar una `PriorityQueue` donde la prioridad fuera la profundidad d
 
 - **Con cola FIFO y 5 workers paralelos, el comportamiento ya es aproximadamente BFS.** Los links de `/personas` (depth=1) se encolan antes que sus hijos, y con workers concurrentes el orden de extracción es similar al BFS estricto.
 - **El sitio de Bancolombia no tiene una jerarquía de importancia clara por profundidad.** Páginas de productos importantes como `/personas/creditos/vivienda` (depth=3) son tan relevantes como `/personas/cuentas` (depth=2). Priorizar por profundidad no mejora la calidad del corpus.
-- **Ya se alcanzaron 62 páginas únicas**, superando el mínimo de 50 sin necesidad de controlar el orden estrictamente.
+- **Ya se alcanzaron 100 páginas únicas aproximadamente**, superando el mínimo de 50 sin necesidad de controlar el orden estrictamente.
 - **Agrega complejidad innecesaria:** La `PriorityQueue` requiere pasar la profundidad como parámetro a cada worker y recalcularla para cada link descubierto, sin un beneficio demostrable sobre los resultados obtenidos.
 
 La cola FIFO es más simple, igualmente efectiva para este dominio acotado y ya produjo los resultados esperados.
